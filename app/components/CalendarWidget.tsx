@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { analytics } from '@/lib/analytics';
+import { errorTracking } from '@/lib/error-tracking';
 
 interface CalendarEvent {
   id: string;
@@ -17,8 +19,12 @@ export default function CalendarWidget() {
 
   useEffect(() => {
     async function fetchEvents() {
+      const startTime = Date.now();
+      
       try {
-        const response = await fetch('/api/calendar/events');
+        // Get user's timezone
+        const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const response = await fetch(`/api/calendar/events?timezone=${encodeURIComponent(timezone)}`);
         const data = await response.json();
         
         if (!response.ok) {
@@ -26,8 +32,30 @@ export default function CalendarWidget() {
         }
         
         setEvents(data.events || []);
+        
+        // Track successful load
+        const loadTime = Date.now() - startTime;
+        analytics.track('calendar_events_loaded', {
+          event_count: data.events?.length || 0,
+          load_time_ms: loadTime,
+        });
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Unknown error');
+        const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+        setError(errorMessage);
+        
+        // Track error
+        analytics.track('calendar_error', {
+          error_message: errorMessage,
+          error_type: err instanceof Error ? err.name : 'UnknownError',
+        });
+        
+        // Report to error tracking
+        if (err instanceof Error) {
+          errorTracking.captureException(err, {
+            component: 'CalendarWidget',
+            action: 'fetchEvents',
+          });
+        }
       } finally {
         setLoading(false);
       }
@@ -37,7 +65,18 @@ export default function CalendarWidget() {
   }, []);
 
   const formatTime = (dateString: string) => {
+    // Check if this is a date-only string (all-day event)
+    if (dateString && !dateString.includes('T') && !dateString.includes(':')) {
+      return 'All day';
+    }
+    
     const date = new Date(dateString);
+    
+    // Check if date is valid
+    if (isNaN(date.getTime())) {
+      return 'All day';
+    }
+    
     return date.toLocaleTimeString('en-US', { 
       hour: 'numeric', 
       minute: '2-digit',
@@ -98,7 +137,9 @@ export default function CalendarWidget() {
                   {event.summary}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {formatTime(event.start)} - {formatTime(event.end)}
+                  {formatTime(event.start) === 'All day' 
+                    ? 'All day' 
+                    : `${formatTime(event.start)} - ${formatTime(event.end)}`}
                 </div>
                 {event.location && (
                   <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">

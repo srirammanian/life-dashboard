@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main ]
 
+env:
+  NODE_ENV: test
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -25,15 +28,48 @@ jobs:
       - name: Run linter
         run: npm run lint
       
+      - name: Type check
+        run: npx tsc --noEmit
+      
       - name: Run tests
         run: npm test
+        env:
+          LOG_LEVEL: error
       
       - name: Build application
         run: npm run build
+        env:
+          NEXTAUTH_URL: http://localhost:3000
+          NEXTAUTH_SECRET: test-secret-for-ci
+      
+      - name: Check bundle size
+        run: |
+          echo "Checking Next.js bundle size..."
+          du -sh .next/static || echo "No static assets found"
+
+  security:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      
+      - name: Run security audit
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+      
+      - name: Check for secrets in code
+        run: |
+          ! grep -r "API_KEY\|SECRET\|PASSWORD" --include="*.ts" --include="*.tsx" . | grep -v "process.env" | grep -v "node_modules" | grep -v "__tests__"
 
   docker:
     runs-on: ubuntu-latest
-    needs: test
+    needs: [test, security]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     
     steps:
@@ -50,3 +86,24 @@ jobs:
           tags: life-dashboard:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      
+      - name: Scan Docker image for vulnerabilities
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image --severity HIGH,CRITICAL life-dashboard:latest || true
+
+  infrastructure-checks:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Verify infrastructure components
+        run: |
+          echo "Checking infrastructure files..."
+          test -f lib/feature-flags.ts || (echo "Missing feature-flags.ts" && exit 1)
+          test -f lib/analytics.ts || (echo "Missing analytics.ts" && exit 1)
+          test -f lib/logger.ts || (echo "Missing logger.ts" && exit 1)
+          test -f lib/error-tracking.ts || (echo "Missing error-tracking.ts" && exit 1)
+          test -f lib/ab-testing.ts || (echo "Missing ab-testing.ts" && exit 1)
+          echo "✅ All infrastructure components present"

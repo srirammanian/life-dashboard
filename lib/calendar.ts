@@ -27,19 +27,62 @@ export function getCalendarClient(accessToken: string) {
 
 /**
  * Fetch today's calendar events
+ * @param accessToken - OAuth access token
+ * @param timezone - IANA timezone (e.g., 'America/Los_Angeles', 'UTC'). Defaults to UTC.
  */
-export async function getTodaysEvents(accessToken: string): Promise<CalendarEvent[]> {
+export async function getTodaysEvents(
+  accessToken: string,
+  timezone: string = 'UTC'
+): Promise<CalendarEvent[]> {
   const calendar = getCalendarClient(accessToken);
   
+  // Get current time in user's timezone
   const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  
+  // Calculate start of day in user's timezone
+  // We create a date string in the user's timezone and parse it back
+  const dateString = now.toLocaleDateString('en-CA', { timeZone: timezone }); // YYYY-MM-DD format
+  const [year, month, day] = dateString.split('-').map(Number);
+  
+  // Create Date objects for start and end of day in user's timezone
+  // Using UTC constructor but adjusted for timezone offset
+  const startOfDay = new Date(now.toLocaleString('en-US', { 
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  }).replace(/(\d+)\/(\d+)\/(\d+),\s(\d+):(\d+):(\d+)/, '$3-$1-$2T00:00:00'));
+  
+  // A more reliable approach: use the date string and construct ISO with timezone offset
+  const startOfDayISO = `${dateString}T00:00:00`;
+  const endOfDayISO = `${dateString}T23:59:59`;
+  
+  // Convert to Date objects that represent the exact moment in the user's timezone
+  const userStartOfDay = new Date(startOfDayISO);
+  const userEndOfDay = new Date(endOfDayISO);
+  
+  // Calculate the timezone offset to adjust the UTC times
+  const getUserTimezoneOffset = (date: Date, tz: string): number => {
+    const utcDate = new Date(date.toLocaleString('en-US', { timeZone: 'UTC' }));
+    const tzDate = new Date(date.toLocaleString('en-US', { timeZone: tz }));
+    return utcDate.getTime() - tzDate.getTime();
+  };
+  
+  const offset = getUserTimezoneOffset(now, timezone);
+  
+  // Adjust for timezone: subtract offset to get the correct UTC time boundaries
+  const startOfDayUTC = new Date(new Date(`${dateString}T00:00:00`).getTime() - offset);
+  const endOfDayUTC = new Date(new Date(`${dateString}T23:59:59`).getTime() - offset + 1000); // +1s to include full day
 
   try {
     const response = await calendar.events.list({
       calendarId: 'primary',
-      timeMin: startOfDay.toISOString(),
-      timeMax: endOfDay.toISOString(),
+      timeMin: startOfDayUTC.toISOString(),
+      timeMax: endOfDayUTC.toISOString(),
       singleEvents: true,
       orderBy: 'startTime',
     });
