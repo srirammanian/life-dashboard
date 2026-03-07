@@ -16,7 +16,8 @@ describe('/api/calendar/events', () => {
   it('returns 401 when not authenticated', async () => {
     vi.mocked(getServerSession).mockResolvedValueOnce(null);
 
-    const response = await GET();
+    const request = new Request('http://localhost:3000/api/calendar/events');
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(401);
@@ -31,7 +32,8 @@ describe('/api/calendar/events', () => {
       expires: '2024-12-31',
     });
 
-    const response = await GET();
+    const request = new Request('http://localhost:3000/api/calendar/events');
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -60,7 +62,8 @@ describe('/api/calendar/events', () => {
 
     vi.mocked(getTodaysEvents).mockResolvedValueOnce(mockEvents);
 
-    const response = await GET();
+    const request = new Request('http://localhost:3000/api/calendar/events');
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(200);
@@ -79,7 +82,8 @@ describe('/api/calendar/events', () => {
 
     vi.mocked(getTodaysEvents).mockRejectedValueOnce(new Error('API Error'));
 
-    const response = await GET();
+    const request = new Request('http://localhost:3000/api/calendar/events');
+    const response = await GET(request);
     const data = await response.json();
 
     expect(response.status).toBe(500);
