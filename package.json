@@ -7,10 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:ui": "vitest --ui",
-    "test:coverage": "vitest --coverage"
+    "test": "NODE_ENV=development vitest run",
+    "test:watch": "NODE_ENV=development vitest",
+    "test:ui": "NODE_ENV=development vitest --ui",
+    "test:coverage": "NODE_ENV=development vitest --coverage"
   },
   "dependencies": {
     "next": "^15.1.6",
